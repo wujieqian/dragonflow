@@ -16,7 +16,9 @@
 from neutron_lib.utils import helpers
 from oslo_log import log
 from ryu.lib import mac as mac_api
+from ryu.lib.mac import haddr_to_bin
 from ryu.ofproto import nicira_ext
+from ryu.ofproto import ether
 
 from dragonflow.common import utils
 from dragonflow import conf as cfg
@@ -178,6 +180,8 @@ class ProviderApp(df_base_app.DFlowApp):
             table_id=const.L2_LOOKUP_TABLE,
             priority=const.PRIORITY_MEDIUM,
             match=match)
+
+        self._snat_bypass(network_id)
 
     def _egress_flow(self, lport, network_id, network_type):
         LOG.debug('Add egress flow for network %(net_id)s',
@@ -374,4 +378,39 @@ class ProviderApp(df_base_app.DFlowApp):
         encoded_mac = mac_api.haddr_to_bin(mac_api.DONTCARE_STR)
         encoded_mask = mac_api.haddr_to_bin(mac_api.UNICAST)
         match.set_dl_dst_masked(encoded_mac, encoded_mask)
+        return match
+
+    def _snat_bypass(self, network_id):
+        #
+	# In table 55, DNAT resubmit conrrupts the other
+	# resubmit flows' fields in multicast_broadcast
+	# entry. It makes chassis app incompatible with
+	# dnat app. 
+        #
+	parser = self.parser
+        ofproto = self.ofproto
+        match = self._get_chassis_match(network_id)
+        egress = []
+        egress.append(parser.OFPActionSetField(reg7=0))
+        egress.append(parser.NXActionResubmitTable(
+            table_id=const.EGRESS_TABLE))
+        egress_inst = [parser.OFPInstructionActions(
+            ofproto.OFPIT_APPLY_ACTIONS, egress)]
+
+        self.mod_flow(cookie=const.CHASSIS_COOKIE_MASK, 
+	              cookie_mask=const.CHASSIS_COOKIE_MASK,
+  	              inst=egress_inst,
+                      table_id=const.L2_LOOKUP_TABLE,
+                      priority=const.PRIORITY_HIGH,
+                      match=match)
+
+    def _get_chassis_match(self, network_id):
+        match = self.parser.OFPMatch()
+	eth_ip = ether.ETH_TYPE_IP
+        match.set_dl_type(eth_ip)
+        chassis_haddr = '{0}00:00:00:00'.format(const.CHASSIS_MAC_PREFIX)
+        dl_dst = haddr_to_bin(chassis_haddr)
+        mask_bin = haddr_to_bin('FF:FF:00:00:00:00')
+        match.set_dl_dst_masked(dl_dst, mask_bin)
+        match.set_metadata(network_id)
         return match

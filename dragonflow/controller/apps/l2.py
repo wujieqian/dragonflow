@@ -248,6 +248,8 @@ class L2App(df_base_app.DFlowApp):
         egress_inst = [parser.OFPInstructionActions(
             ofproto.OFPIT_APPLY_ACTIONS, egress)]
         self.mod_flow(
+	    cookie=0,
+	    cookie_mask=const.CHASSIS_COOKIE_MASK,
             inst=egress_inst,
             table_id=const.L2_LOOKUP_TABLE,
             command=command,
@@ -399,6 +401,8 @@ class L2App(df_base_app.DFlowApp):
         egress_inst = [parser.OFPInstructionActions(
             ofproto.OFPIT_APPLY_ACTIONS, egress)]
         self.mod_flow(
+	    cookie=0,
+	    cookie_mask=const.CHASSIS_COOKIE_MASK,
             inst=egress_inst,
             table_id=const.L2_LOOKUP_TABLE,
             command=command,

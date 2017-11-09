@@ -18,6 +18,7 @@ from neutron_lib import constants as n_const
 from oslo_log import log
 from ryu.ofproto import ether
 from ryu.ofproto import nicira_ext
+from ryu.lib.mac import haddr_to_bin
 
 from dragonflow.common import constants as df_common_const
 from dragonflow.common import utils as df_utils
@@ -256,3 +257,19 @@ class SNATApp_mixin(object):
             actions=actions,
             table_id=const.INGRESS_DISPATCH_TABLE,
             priority=const.PRIORITY_DEFAULT)
+
+        self._drop_multicast_broadcast_package()
+
+    def _drop_multicast_broadcast_package(self):
+        #
+        # Forbid forwarding multicast & broadcast package through
+        # snat patch port in avoid of ARP storm.
+        #
+        match = self.parser.OFPMatch()
+        addint = haddr_to_bin('01:00:00:00:00:00')
+        match.set_dl_dst_masked(addint, addint)
+        drop_inst = None
+        self.mod_flow(inst=drop_inst,
+                      table_id=const.INGRESS_DISPATCH_TABLE,
+                      priority=const.PRIORITY_LOW,
+                      match=match)
